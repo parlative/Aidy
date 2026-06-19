@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """
-PayPal → Banking Kalender Kurzbefehl
-Nur Standard-Shortcuts-Actions (keine Mail-spezifischen)
-Funktioniert auf iOS 16+ / iOS 26+
+PayPal → Banking Kalender — Version 3
+Nur 8 Aktionen, ausschließlich bewährte Action-Identifier:
+setvariable, matchtext, getitemfromlist, addnewevent
+Titel/Notizen direkt inline im addnewevent (kein gettext mehr)
 """
 import plistlib, uuid
 
 def uid(): return str(uuid.uuid4()).upper()
 
-U    = "￼"   # Placeholder für Variablen in Shortcuts-Text
+U    = "￼"   # U+FFFC – Shortcut-Variablen-Platzhalter
 DASH = "–"   # En-Dash
 
 AM_UUID   = uid()
 AM_I_UUID = uid()
 ME_UUID   = uid()
 ME_I_UUID = uid()
-TI_UUID   = uid()
-NO_UUID   = uid()
-RE_UUID   = uid()
 
 def var(name):
     return {"Value": {"Type": "Variable", "VariableName": name},
@@ -31,50 +29,49 @@ def tok(s, r):
     return {"Value": {"string": s, "attachmentsByRange": r},
             "WFSerializationType": "WFTextTokenString"}
 
-# "PayPal – {Haendler} – {Betrag}"
+# ─── Titel: "PayPal – {Haendler} – {Betrag}" ─────────────────────────────────
 # P(0)a(1)y(2)P(3)a(4)l(5) (6)–(7) (8)▯(9) (10)–(11) (12)▯(13)
-title_str = f"PayPal {DASH} {U} {DASH} {U}"
-title_r   = {
-    "{9, 1}":  {"Type": "Variable", "VariableName": "Haendler"},
-    "{13, 1}": {"Type": "Variable", "VariableName": "Betrag"},
-}
+title = tok(
+    f"PayPal {DASH} {U} {DASH} {U}",
+    {
+        "{9, 1}":  {"Type": "Variable", "VariableName": "Haendler"},
+        "{13, 1}": {"Type": "Variable", "VariableName": "Betrag"},
+    }
+)
 
+# ─── Notizen ─────────────────────────────────────────────────────────────────
 # "PayPal Zahlung\nBetrag: ▯\nHändler: ▯"
-# P…g(13)\n(14)B…g(20):(21) (22)▯(23)\n(24)H(25)ä(26)n(27)d(28)l(29)e(30)r(31):(32) (33)▯(34)
-notes_str = f"PayPal Zahlung\nBetrag: {U}\nHändler: {U}"
-notes_r   = {
-    "{23, 1}": {"Type": "Variable", "VariableName": "Betrag"},
-    "{34, 1}": {"Type": "Variable", "VariableName": "Haendler"},
-}
-
-# "✅ Eintrag erstellt!\n▯ – ▯"
-# ✅(0) (1)E…t(17)!(18)\n(19)▯(20) (21)–(22) (23)▯(24)
-res_str = f"✅ Eintrag erstellt!\n{U} {DASH} {U}"
-res_r   = {
-    "{20, 1}": {"Type": "Variable", "VariableName": "Haendler"},
-    "{24, 1}": {"Type": "Variable", "VariableName": "Betrag"},
-}
+# P…g(13)\n(14)B…:(21) (22)▯(23)\n(24)H(25)ä(26)n(27)d(28)l(29)e(30)r(31):(32) (33)▯(34)
+notes = tok(
+    f"PayPal Zahlung\nBetrag: {U}\nHändler: {U}",
+    {
+        "{23, 1}": {"Type": "Variable", "VariableName": "Betrag"},
+        "{34, 1}": {"Type": "Variable", "VariableName": "Haendler"},
+    }
+)
 
 actions = [
-    # 1. Mail-Eingabe als Variable speichern (direkte Text-Koercion bei späteren Actions)
+    # 1. Mail-Eingabe als Variable speichern (Shortcut-Input = die E-Mail)
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
-        "WFWorkflowActionParameters": {"WFVariableName": "MailMsg"}
-        # kein WFInput → verwendet Shortcut-Input (die Mail)
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "MailMsg"
+            # kein WFInput → Shortcut-Input (die Mail) wird genommen
+        }
     },
 
-    # 2. Betrag suchen: "29,99 EUR" / "29,99€" / "EUR 29,99"
+    # 2. Betrag suchen: "29,99 EUR" / "29,99€"
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.matchtext",
         "WFWorkflowActionParameters": {
             "UUID": AM_UUID,
             "WFMatchTextPattern": r"\d[\d.]*[.,]\d{2}\s*(?:EUR|€)",
             "WFMatchTextCaseSensitive": False,
-            "WFInput": var("MailMsg")   # Mail wird zu Text koerziert (Body)
+            "WFInput": var("MailMsg")
         }
     },
 
-    # 3. Ersten Betrag-Treffer
+    # 3. Ersten Betrag-Treffer nehmen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
         "WFWorkflowActionParameters": {
@@ -84,7 +81,7 @@ actions = [
         }
     },
 
-    # 4. Variable "Betrag"
+    # 4. Variable "Betrag" setzen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
@@ -104,7 +101,7 @@ actions = [
         }
     },
 
-    # 6. Ersten Händler-Treffer
+    # 6. Ersten Händler-Treffer nehmen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
         "WFWorkflowActionParameters": {
@@ -114,7 +111,7 @@ actions = [
         }
     },
 
-    # 7. Variable "Haendler"
+    # 7. Variable "Haendler" setzen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
@@ -123,41 +120,14 @@ actions = [
         }
     },
 
-    # 8. Titel-Text: "PayPal – Haendler – Betrag"
-    {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.gettext",
-        "WFWorkflowActionParameters": {
-            "UUID": TI_UUID,
-            "WFTextActionText": tok(title_str, title_r)
-        }
-    },
-
-    # 9. Notizen-Text
-    {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.gettext",
-        "WFWorkflowActionParameters": {
-            "UUID": NO_UUID,
-            "WFTextActionText": tok(notes_str, notes_r)
-        }
-    },
-
-    # 10. Kalender-Eintrag in "Banking", ganztägig, heute
+    # 8. Kalender-Eintrag in "Banking" mit Titel+Notizen direkt inline
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.addnewevent",
         "WFWorkflowActionParameters": {
-            "WFCalendarItemTitle": out("Text", TI_UUID),
+            "WFCalendarItemTitle": title,
             "WFCalendarItemCalendar": "Banking",
             "WFCalendarItemAllDay": True,
-            "WFCalendarItemNotes": out("Text", NO_UUID),
-        }
-    },
-
-    # 11. Ergebnis anzeigen
-    {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.showresult",
-        "WFWorkflowActionParameters": {
-            "UUID": RE_UUID,
-            "Text": tok(res_str, res_r)
+            "WFCalendarItemNotes": notes,
         }
     },
 ]
