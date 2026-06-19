@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """
-PayPal → Banking Kalender — Version 3
-Nur 8 Aktionen, ausschließlich bewährte Action-Identifier:
-setvariable, matchtext, getitemfromlist, addnewevent
-Titel/Notizen direkt inline im addnewevent (kein gettext mehr)
+PayPal Banking Kalender Kurzbefehl – Finale Version
+Für macOS Import → iCloud Sync → iPhone
 """
 import plistlib, uuid
 
 def uid(): return str(uuid.uuid4()).upper()
+U = "￼"; DASH = "–"
 
-U    = "￼"   # U+FFFC – Shortcut-Variablen-Platzhalter
-DASH = "–"   # En-Dash
-
-AM_UUID   = uid()
-AM_I_UUID = uid()
-ME_UUID   = uid()
-ME_I_UUID = uid()
+BODY_UUID = uid()
+AM_UUID = uid(); AM_I = uid()
+ME_UUID = uid(); ME_I = uid()
+DT_UUID = uid(); DT_I = uid()
+DATE_UUID = uid()
 
 def var(name):
     return {"Value": {"Type": "Variable", "VariableName": name},
@@ -29,104 +26,135 @@ def tok(s, r):
     return {"Value": {"string": s, "attachmentsByRange": r},
             "WFSerializationType": "WFTextTokenString"}
 
-# ─── Titel: "PayPal – {Haendler} – {Betrag}" ─────────────────────────────────
-# P(0)a(1)y(2)P(3)a(4)l(5) (6)–(7) (8)▯(9) (10)–(11) (12)▯(13)
-title = tok(
-    f"PayPal {DASH} {U} {DASH} {U}",
-    {
-        "{9, 1}":  {"Type": "Variable", "VariableName": "Haendler"},
-        "{13, 1}": {"Type": "Variable", "VariableName": "Betrag"},
-    }
-)
+# Titel: "PayPal – {Haendler} – {Betrag} | {DatumText}"
+# P(0)a(1)y(2)P(3)a(4)l(5) (6)–(7) (8)▯(9) (10)–(11) (12)▯(13) (14)|(15) (16)▯(17)
+title = tok(f"PayPal {DASH} {U} {DASH} {U} | {U}", {
+    "{9, 1}":  {"Type": "Variable", "VariableName": "Haendler"},
+    "{13, 1}": {"Type": "Variable", "VariableName": "Betrag"},
+    "{17, 1}": {"Type": "Variable", "VariableName": "DatumText"},
+})
 
-# ─── Notizen ─────────────────────────────────────────────────────────────────
-# "PayPal Zahlung\nBetrag: ▯\nHändler: ▯"
-# P…g(13)\n(14)B…:(21) (22)▯(23)\n(24)H(25)ä(26)n(27)d(28)l(29)e(30)r(31):(32) (33)▯(34)
-notes = tok(
-    f"PayPal Zahlung\nBetrag: {U}\nHändler: {U}",
-    {
-        "{23, 1}": {"Type": "Variable", "VariableName": "Betrag"},
-        "{34, 1}": {"Type": "Variable", "VariableName": "Haendler"},
-    }
-)
+# Notizen: "Betrag: ▯\nHändler: ▯\nFällig: ▯"
+# B…:(6) (7)▯(8)\nH(10)ä(11)n(12)d(13)l(14)e(15)r(16):(17) (18)▯(19)\nF(21)ä(22)l(23)l(24)i(25)g(26):(27) (28)▯(29)
+notes = tok(f"Betrag: {U}\nHändler: {U}\nFällig: {U}", {
+    "{8, 1}":  {"Type": "Variable", "VariableName": "Betrag"},
+    "{19, 1}": {"Type": "Variable", "VariableName": "Haendler"},
+    "{29, 1}": {"Type": "Variable", "VariableName": "DatumText"},
+})
 
 actions = [
-    # 1. Mail-Eingabe als Variable speichern (Shortcut-Input = die E-Mail)
+    # 1. Mail-Eingabe als Variable speichern
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
-        "WFWorkflowActionParameters": {
-            "WFVariableName": "MailMsg"
-            # kein WFInput → Shortcut-Input (die Mail) wird genommen
-        }
+        "WFWorkflowActionParameters": {"WFVariableName": "MailMsg"}
     },
-
-    # 2. Betrag suchen: "29,99 EUR" / "29,99€"
+    # 2. Text aus der Mail abrufen (Body)
     {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.matchtext",
+        "WFWorkflowActionIdentifier": "is.workflow.actions.gettext",
         "WFWorkflowActionParameters": {
-            "UUID": AM_UUID,
-            "WFMatchTextPattern": r"\d[\d.]*[.,]\d{2}\s*(?:EUR|€)",
-            "WFMatchTextCaseSensitive": False,
+            "UUID": BODY_UUID,
             "WFInput": var("MailMsg")
         }
     },
-
-    # 3. Ersten Betrag-Treffer nehmen
+    # 3. Body als Variable speichern
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "MailBody",
+            "WFInput": out("Text", BODY_UUID)
+        }
+    },
+    # 4. Betrag suchen: "146,43 €" oder "146,43 EUR"
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text.match",
+        "WFWorkflowActionParameters": {
+            "UUID": AM_UUID,
+            "WFMatchTextPattern": r"\d[\d.]*[.,]\d{2}\s*(?:€|EUR)",
+            "WFMatchTextCaseSensitive": False,
+            "WFInput": var("MailBody")
+        }
+    },
+    # 5. Ersten Treffer nehmen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
         "WFWorkflowActionParameters": {
-            "UUID": AM_I_UUID,
-            "WFItemSpecifier": "First Item",
+            "UUID": AM_I, "WFItemSpecifier": "First Item",
             "WFInput": out("Matches", AM_UUID)
         }
     },
-
-    # 4. Variable "Betrag" setzen
+    # 6. Variable Betrag
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
             "WFVariableName": "Betrag",
-            "WFInput": out("Item from List", AM_I_UUID)
+            "WFInput": out("Item from List", AM_I)
         }
     },
-
-    # 5. Händler suchen: Text nach "an " vor "gesendet/bezahlt/genehmigt"
+    # 7. Händler suchen: "bei K&K Getränke GmbH für..."
     {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.matchtext",
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text.match",
         "WFWorkflowActionParameters": {
             "UUID": ME_UUID,
-            "WFMatchTextPattern": r"(?<=\ban )([^\n\r]+?)(?= gesendet| bezahlt| genehmigt|\n|\r|$)",
+            "WFMatchTextPattern": r"(?<=\bbei )([^\n\r]+?)(?= für| –| Bezahlung|\n|\r|$)",
             "WFMatchTextCaseSensitive": False,
-            "WFInput": var("MailMsg")
+            "WFInput": var("MailBody")
         }
     },
-
-    # 6. Ersten Händler-Treffer nehmen
+    # 8. Ersten Treffer nehmen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
         "WFWorkflowActionParameters": {
-            "UUID": ME_I_UUID,
-            "WFItemSpecifier": "First Item",
+            "UUID": ME_I, "WFItemSpecifier": "First Item",
             "WFInput": out("Matches", ME_UUID)
         }
     },
-
-    # 7. Variable "Haendler" setzen
+    # 9. Variable Haendler
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
             "WFVariableName": "Haendler",
-            "WFInput": out("Item from List", ME_I_UUID)
+            "WFInput": out("Item from List", ME_I)
         }
     },
-
-    # 8. Kalender-Eintrag in "Banking" mit Titel+Notizen direkt inline
+    # 10. Fälligkeitsdatum suchen: "18. Juli 2026"
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text.match",
+        "WFWorkflowActionParameters": {
+            "UUID": DT_UUID,
+            "WFMatchTextPattern": r"\d{1,2}\. \w+ \d{4}",
+            "WFMatchTextCaseSensitive": False,
+            "WFInput": var("MailBody")
+        }
+    },
+    # 11. Ersten Treffer nehmen
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
+        "WFWorkflowActionParameters": {
+            "UUID": DT_I, "WFItemSpecifier": "First Item",
+            "WFInput": out("Matches", DT_UUID)
+        }
+    },
+    # 12. Variable DatumText
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "DatumText",
+            "WFInput": out("Item from List", DT_I)
+        }
+    },
+    # 13. Aktuelles Datum holen (für Startdatum des Kalendereintrags)
+    {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.date",
+        "WFWorkflowActionParameters": {"UUID": DATE_UUID}
+    },
+    # 14. Kalender-Eintrag erstellen
     {
         "WFWorkflowActionIdentifier": "is.workflow.actions.addnewevent",
         "WFWorkflowActionParameters": {
             "WFCalendarItemTitle": title,
             "WFCalendarItemCalendar": "Banking",
             "WFCalendarItemAllDay": True,
+            "WFCalendarItemStartDate": out("Current Date", DATE_UUID),
             "WFCalendarItemNotes": notes,
         }
     },
@@ -138,16 +166,12 @@ shortcut = {
     "WFWorkflowTypes": [],
     "WFWorkflowHasShortcutInputVariables": True,
     "WFWorkflowInputContentItemClasses": ["WFMailMessageContentItem"],
-    "WFWorkflowIcon": {
-        "WFWorkflowIconStartColor": 946986751,
-        "WFWorkflowIconGlyphNumber": 59503
-    },
+    "WFWorkflowIcon": {"WFWorkflowIconStartColor": 946986751, "WFWorkflowIconGlyphNumber": 59503},
     "WFWorkflowActions": actions
 }
 
-out_path = "/home/user/Aidy/PayPal_Banking_Kalender.shortcut"
-with open(out_path, "wb") as f:
+path = "/home/user/Aidy/PayPal_Banking_Kalender.shortcut"
+with open(path, "wb") as f:
     plistlib.dump(shortcut, f, fmt=plistlib.FMT_BINARY)
 
-import os
-print(f"OK: {out_path}  ({os.path.getsize(out_path)} Bytes, {len(actions)} Aktionen)")
+import os; print(f"OK: {path}  ({os.path.getsize(path)} B, {len(actions)} Aktionen)")
